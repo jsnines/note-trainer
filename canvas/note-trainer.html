@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>String Note Trainer</title>
+<style>
+  :root {
+    --bg: #f3f1ec;
+    --card: #ffffff;
+    --ink: #1f2430;
+    --muted: #5d6475;
+    --line: #d9d5cc;
+    --accent: #7a3b1d;
+    --accent-soft: #f5e6dc;
+    --good: #1e7a3c;
+    --good-soft: #dff3e5;
+    --bad: #b3261e;
+    --bad-soft: #fbe3e1;
+    --pick: #2f5bb7;
+    --pick-soft: #e3ebfb;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Segoe UI", Roboto, "Noto Sans", Arial, sans-serif;
+    font-size: 17px;
+    line-height: 1.4;
+    min-height: 100vh;
+  }
+  header {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 10px 20px; background: var(--accent); color: #fff;
+  }
+  header h1 { font-size: 20px; margin: 0; font-weight: 700; letter-spacing: .2px; }
+  header .stats { display: flex; gap: 18px; font-size: 15px; flex-wrap: wrap; }
+  header .stats b { font-size: 17px; }
+  main { max-width: 1100px; margin: 0 auto; padding: 16px; }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+    padding: 18px 20px; box-shadow: 0 1px 3px rgba(0,0,0,.05);
+  }
+  .hidden { display: none !important; }
+  h2 { margin: 0 0 10px; font-size: 22px; }
+  h3 { margin: 0 0 8px; font-size: 16px; color: var(--muted); text-transform: uppercase; letter-spacing: .6px; }
+  p { margin: 0 0 10px; }
+
+  /* Setup */
+  .instruments { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 8px 0 6px; }
+  .inst {
+    display: flex; flex-direction: column; align-items: center; gap: 2px;
+    padding: 12px 8px; border: 2px solid var(--line); border-radius: 12px; background: #fff;
+    font-size: 19px; font-weight: 700;
+  }
+  .inst span.ico { font-size: 30px; line-height: 1.1; }
+  .inst small { font-size: 13px; font-weight: 500; color: var(--muted); }
+  .inst.on { border-color: var(--accent); background: var(--accent-soft); color: #4a220f; box-shadow: 0 0 0 2px var(--accent) inset; }
+  .setup-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 14px; }
+  .opt { display: flex; align-items: flex-start; gap: 10px; padding: 9px 10px; border-radius: 10px; cursor: pointer; }
+  .opt:hover { background: #f7f5f0; }
+  .opt input { width: 20px; height: 20px; margin-top: 2px; accent-color: var(--accent); flex: none; }
+  .opt small { display: block; color: var(--muted); font-size: 14px; }
+  .keys { display: grid; grid-template-columns: 1fr 1fr; gap: 0 6px; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chk { display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border: 2px solid var(--line); border-radius: 10px; cursor: pointer; font-weight: 600; }
+  .chk input { width: 18px; height: 18px; accent-color: var(--accent); }
+
+  button {
+    font: inherit; cursor: pointer; border-radius: 10px; border: 2px solid var(--line);
+    background: #fff; color: var(--ink); padding: 10px 16px; font-weight: 600;
+    transition: background .12s, border-color .12s, transform .05s;
+  }
+  button:hover:not(:disabled) { border-color: #b9b3a6; }
+  button:active:not(:disabled) { transform: translateY(1px); }
+  button:disabled { cursor: default; }
+  button:focus-visible { outline: 3px solid var(--pick); outline-offset: 2px; }
+  .primary { background: var(--accent); border-color: var(--accent); color: #fff; font-size: 18px; padding: 12px 26px; }
+  .primary:hover:not(:disabled) { background: #5f2c14; border-color: #5f2c14; }
+  .primary:disabled { opacity: .45; }
+  .ghost { background: transparent; }
+  .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; align-items: center; }
+  .warn { color: var(--bad); font-weight: 600; }
+
+  /* Quiz */
+  .quiz { display: grid; grid-template-columns: minmax(300px, 1.1fr) 1fr; gap: 16px; align-items: start; }
+  .staff-box { text-align: center; }
+  .staff-box svg { width: 100%; max-width: 480px; height: auto; display: block; margin: 0 auto; }
+  .staff-tools { display: flex; justify-content: center; gap: 10px; margin-top: 6px; flex-wrap: wrap; }
+  .q { margin-bottom: 14px; }
+  .q:last-of-type { margin-bottom: 4px; }
+  .choices { display: flex; flex-wrap: wrap; gap: 8px; }
+  .choices button { min-width: 54px; font-size: 20px; padding: 8px 12px; }
+  .choices.acc button { font-size: 17px; min-width: 96px; }
+  .choices.fingers button { min-width: 64px; font-size: 18px; padding: 8px 10px; }
+  .choices.fingers button small { display: block; font-size: 11px; font-weight: 500; color: var(--muted); }
+  .choices button.sel { background: var(--pick-soft); border-color: var(--pick); color: #17327a; }
+  .choices button.right { background: var(--good-soft); border-color: var(--good); color: #0f4a23; }
+  .choices button.wrong { background: var(--bad-soft); border-color: var(--bad); color: #7a1610; }
+
+  .feedback { margin-top: 14px; border-radius: 12px; padding: 14px 16px; display: grid; grid-template-columns: 1fr auto; gap: 14px; align-items: center; }
+  .feedback.ok { background: var(--good-soft); border: 2px solid var(--good); }
+  .feedback.no { background: var(--bad-soft); border: 2px solid var(--bad); }
+  .feedback .big { font-size: 22px; font-weight: 700; margin-bottom: 4px; }
+  .feedback ul { margin: 6px 0 0; padding-left: 20px; }
+  .feedback svg { width: 170px; height: auto; background: #fff; border-radius: 10px; border: 1px solid var(--line); }
+  .hint { color: var(--muted); font-size: 14px; }
+
+  /* Results */
+  .score-big { font-size: 56px; font-weight: 800; color: var(--accent); line-height: 1; }
+  .bars { display: grid; gap: 8px; margin: 14px 0; max-width: 520px; }
+  .bar { display: grid; grid-template-columns: 110px 1fr 54px; gap: 10px; align-items: center; font-weight: 600; }
+  .bar .track { height: 14px; background: #ece8df; border-radius: 99px; overflow: hidden; }
+  .bar .fill { height: 100%; background: var(--accent); border-radius: 99px; }
+  .missed { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+  .missed span { background: var(--bad-soft); border: 1px solid #e9b4ae; padding: 4px 10px; border-radius: 99px; font-weight: 600; }
+
+  /* Name screen */
+  .name-box { max-width: 520px; margin: 0 auto; text-align: center; }
+  .name-box input {
+    font: inherit; font-size: 22px; padding: 12px 14px; width: 100%;
+    border: 2px solid var(--line); border-radius: 10px; margin: 10px 0 4px; text-align: center;
+  }
+  .name-box input:focus { outline: 3px solid var(--pick); outline-offset: 1px; border-color: var(--pick); }
+  .name-box .actions { justify-content: center; }
+
+  /* Report */
+  .report-wrap { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
+  .report-wrap img { width: 100%; max-width: 720px; height: auto; display: block; border: 1px solid var(--line); border-radius: 10px; }
+  .save-help { margin-top: 12px; padding: 12px 14px; border-radius: 10px; background: var(--pick-soft); border: 1px solid #b9cbef; max-width: 720px; }
+  .save-help ol { margin: 6px 0 0; padding-left: 22px; }
+  .save-help code { font-size: 16px; font-weight: 700; background: #fff; padding: 1px 6px; border-radius: 6px; user-select: all; }
+
+  @media (max-width: 820px) {
+    .quiz, .setup-grid { grid-template-columns: 1fr; }
+    .instruments { grid-template-columns: repeat(2, 1fr); }
+    .feedback { grid-template-columns: 1fr; }
+    header { flex-direction: column; align-items: flex-start; }
+  }
+</style>
+</head>
+<body>
+<div id="jsCheck" style="background:#fbe3e1;border:2px solid #b3261e;color:#7a1610;padding:10px 16px;font-weight:600">⚠ The app's code (note-trainer.js) did not load, so the buttons won't work. Make sure note-trainer.js is uploaded to the same Canvas folder as this page.</div>
+
+<header>
+  <h1 id="title">🎻 First Position Note Trainer</h1>
+  <div class="stats" id="stats"></div>
+</header>
+
+<main>
+  <!-- SETUP SCREEN -->
+  <section id="setup" class="card">
+    <h2>Name that note!</h2>
+    <p>You'll see a note on the staff. For each note, choose its <b>name</b>, the <b>string</b> it's played on, and the <b>finger</b> you use in first position.</p>
+
+    <h3 style="margin-top:14px">1. Choose your instrument</h3>
+    <div class="instruments" id="instPicks"></div>
+
+    <div class="setup-grid">
+      <div>
+        <h3>2. Which notes?</h3>
+        <div class="keys">
+          <label class="opt"><input type="radio" name="set" value="cmajor">
+            <span>C Major<small>No sharps or flats</small></span></label>
+          <label class="opt"><input type="radio" name="set" value="gmajor">
+            <span>G Major<small>F♯</small></span></label>
+          <label class="opt"><input type="radio" name="set" value="dmajor" checked>
+            <span>D Major<small>F♯, C♯</small></span></label>
+          <label class="opt"><input type="radio" name="set" value="amajor">
+            <span>A Major<small>F♯, C♯, G♯</small></span></label>
+          <label class="opt"><input type="radio" name="set" value="fmajor">
+            <span>F Major<small>B♭</small></span></label>
+        </div>
+        <label class="opt"><input type="radio" name="set" value="sharps">
+          <span>Naturals + sharps<small>Adds F♯, C♯, G♯, D♯</small></span></label>
+        <label class="opt"><input type="radio" name="set" value="all">
+          <span>Everything in first position<small>Naturals, sharps, and flats (B♭, E♭)</small></span></label>
+      </div>
+      <div>
+        <h3>3. Which strings?</h3>
+        <div class="row" id="stringPicks"></div>
+        <h3 style="margin-top:18px">4. How many questions?</h3>
+        <label class="opt"><input type="radio" name="count" value="10" checked><span>10 questions</span></label>
+        <label class="opt"><input type="radio" name="count" value="20"><span>20 questions</span></label>
+        <label class="opt"><input type="radio" name="count" value="0"><span>Practice forever<small>No end — stop whenever you like</small></span></label>
+        <label class="opt" style="margin-top:6px"><input type="checkbox" id="soundOn" checked>
+          <span>Play the note's sound after I answer</span></label>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button class="primary" id="startBtn">Start ▶</button>
+      <span id="setupWarn" class="warn"></span>
+    </div>
+  </section>
+
+  <!-- NAME SCREEN (10- and 20-question sessions) -->
+  <section id="nameScreen" class="card hidden">
+    <div class="name-box">
+      <h2>What's your name?</h2>
+      <p class="hint" id="nameSummary"></p>
+      <input id="studentName" type="text" maxlength="40" autocomplete="off" spellcheck="false" placeholder="Type your name" aria-label="Your name">
+      <p class="warn" id="nameWarn"></p>
+      <div class="actions">
+        <button type="button" id="nameBackBtn">← Back</button>
+        <button type="button" class="primary" id="nameGoBtn">Begin ▶</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- QUIZ SCREEN -->
+  <section id="quiz" class="hidden">
+    <div class="quiz">
+      <div class="card staff-box">
+        <h3 id="qLabel">Question 1</h3>
+        <div id="staff"></div>
+        <div class="staff-tools">
+          <button class="ghost" id="backBtn" title="Go back to the start page">← Start page</button>
+          <button class="ghost" id="hearBtn" title="Hear this note">🔊 Hear it</button>
+          <button class="ghost" id="quitBtn">End &amp; see results</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="q">
+          <h3>1. What is the note name?</h3>
+          <div class="choices" id="letterChoices"></div>
+          <div class="choices acc" id="accChoices" style="margin-top:8px"></div>
+        </div>
+        <div class="q">
+          <h3>2. Which string?</h3>
+          <div class="choices" id="stringChoices"></div>
+        </div>
+        <div class="q">
+          <h3>3. Which finger?</h3>
+          <div class="choices fingers" id="fingerChoices"></div>
+        </div>
+        <div class="actions">
+          <button class="primary" id="checkBtn" disabled>Check answer</button>
+          <span class="hint" id="checkHint">Answer all three questions.</span>
+        </div>
+        <div id="feedback" class="hidden"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- RESULTS SCREEN -->
+  <section id="results" class="card hidden">
+    <h2>Great work! 🎉</h2>
+    <div class="score-big" id="resPct"></div>
+    <p id="resLine" style="margin-top:6px"></p>
+    <div class="bars" id="resBars"></div>
+    <div id="resMissedWrap">
+      <h3>Notes to practice</h3>
+      <div class="missed" id="resMissed"></div>
+    </div>
+    <div id="reportWrap" class="report-wrap hidden">
+      <h3>Report for your teacher</h3>
+      <canvas id="reportCanvas" class="hidden"></canvas>
+      <div class="actions" style="margin-top:4px">
+        <button type="button" class="primary" id="saveImgBtn">📷 Save results as a picture</button>
+        <button type="button" id="openImgBtn">Open picture in a new tab</button>
+      </div>
+      <p class="hint" id="saveHint" style="margin-top:8px"></p>
+      <div class="save-help hidden" id="saveHelp">
+        <b>Picture didn't download?</b> Save it this way instead:
+        <ol>
+          <li>Right-click the report picture below. (On a Chromebook, tap the touchpad with two fingers. On an iPad, press and hold.)</li>
+          <li>Choose <b>Save image as…</b> (or <b>Save to Photos</b>).</li>
+          <li>Name it <code id="saveName"></code></li>
+        </ol>
+      </div>
+      <img id="reportImg" alt="Results report picture" style="margin-top:14px">
+    </div>
+    <div class="actions">
+      <button class="primary" id="missedBtn">Practice my missed notes</button>
+      <button id="againBtn">Play again</button>
+      <button id="settingsBtn">Change settings</button>
+    </div>
+  </section>
+</main>
+
+<script src="note-trainer.js"></script>
+</body>
+</html>
