@@ -160,11 +160,13 @@
   <section id="setup" class="card">
     <h2>Count that rhythm!</h2>
     <p>You'll see one measure of music. Under each note and rest, fill in its counts with the number buttons.
-      Use a dash <b>( – )</b> to connect the beats of a longer note or rest.</p>
+      Use a dash <b>( – )</b> to connect the beats of a longer note or rest, and put the counts for a rest in <b>parentheses</b>.</p>
     <div class="example">
       <span>Quarter note on beat 3: <b>3</b></span>
       <span>Half note on beat 1: <b>1-2</b></span>
       <span>Whole note: <b>1-2-3-4</b></span>
+      <span>Quarter rest on beat 2: <b>(2)</b></span>
+      <span>Half rest on beat 3: <b>(3-4)</b></span>
     </div>
 
     <h3 style="margin-top:16px">1. Choose your level</h3>
@@ -178,7 +180,12 @@
         <label class="opt"><input type="radio" name="count" value="0"><span>Practice forever<small>No end — stop whenever you like</small></span></label>
       </div>
       <div>
-        <h3>3. Sound</h3>
+        <h3>3. Mode</h3>
+        <label class="opt"><input type="radio" name="mode" value="practice" checked>
+          <span>Practice mode<small>Use 🔊 Hear it any time, even before you answer</small></span></label>
+        <label class="opt"><input type="radio" name="mode" value="test">
+          <span>Test mode<small>🔊 Hear it unlocks after you check your answer</small></span></label>
+        <h3 style="margin-top:14px">4. Sound</h3>
         <label class="opt"><input type="checkbox" id="soundOn" checked>
           <span>Play the rhythm after I answer<small>With a 4-beat count-in and a click on every beat</small></span></label>
       </div>
@@ -217,6 +224,7 @@
         <button type="button" data-key="3">3</button>
         <button type="button" data-key="4">4</button>
         <button type="button" data-key="-" aria-label="Dash">–</button>
+        <button type="button" data-key="paren" aria-label="Parentheses for a rest" title="Parentheses for a rest">( )</button>
         <button type="button" data-key="back" class="erase">⌫ Erase</button>
       </div>
       <div class="check-row">

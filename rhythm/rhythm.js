@@ -64,7 +64,14 @@
     for (var i = 0; i < s.dur; i++) b.push(s.start + 1 + i);
     return b.join("-");
   }
+  // What the student must enter: rests go in parentheses, e.g. (3-4)
+  function answerFor(s) { return s.rest ? "(" + countsFor(s) + ")" : countsFor(s); }
   function symName(s) { return SINGULAR[s.dur] + " " + (s.rest ? "rest" : "note"); }
+
+  var MODES = {
+    practice: { name: "Practice mode", report: "Practice (could hear the rhythm before answering)" },
+    test: { name: "Test mode", report: "Test (could hear the rhythm only after answering)" }
+  };
 
   // ---------- Staff drawing (pure SVG, no fonts needed) ----------
   var W = 640, SP = 14, BOT = 128;
@@ -119,7 +126,7 @@
     pattern.syms.forEach(function (s, i) {
       out += drawSym(s, i);
       if (opts.counts) {
-        out += '<text x="' + symX(s) + '" y="' + (BOT + 50) + '" text-anchor="middle" font-family="Arial, sans-serif" font-size="22" font-weight="700" fill="#1e7a3c">' + countsFor(s) + '</text>';
+        out += '<text x="' + symX(s) + '" y="' + (BOT + 50) + '" text-anchor="middle" font-family="Arial, sans-serif" font-size="22" font-weight="700" fill="#1e7a3c">' + answerFor(s) + '</text>';
       }
     });
     return out + '</svg>';
@@ -185,8 +192,8 @@
   var $ = function (id) { return document.getElementById(id); };
   var level = LEVELS[0];
   var state = {
-    pool: [], deck: [], total: 0, index: 0, current: null, answered: false,
-    answers: [], sel: 0,
+    pool: [], deck: [], total: 0, index: 0, current: null, answered: false, mode: "practice",
+    answers: [], sel: 0, // each answer: { paren: bool, body: "3-4" }
     asked: 0, allRight: 0, boxes: 0, boxesRight: 0, byType: {}, streak: 0, best: 0,
     missed: {}, lastSettings: null,
     student: null, finishedAt: null // kept in memory only; gone on reload
@@ -238,7 +245,11 @@
   }
 
   function readSettings() {
-    return { level: level, count: +document.querySelector('input[name="count"]:checked').value };
+    return {
+      level: level,
+      count: +document.querySelector('input[name="count"]:checked').value,
+      mode: document.querySelector('input[name="mode"]:checked').value
+    };
   }
 
   function askName() {
@@ -246,7 +257,7 @@
     state.student = null;
     $("studentName").value = "";
     $("nameWarn").textContent = "";
-    $("nameSummary").textContent = st.level.name + " · " + st.level.desc + " · " + st.count + " questions";
+    $("nameSummary").textContent = st.level.name + " · " + st.level.desc + " · " + MODES[st.mode].name + " · " + st.count + " questions";
     show("nameScreen");
     window.scrollTo(0, 0);
     $("studentName").focus();
@@ -256,18 +267,19 @@
     var nm = $("studentName").value.replace(/\s+/g, " ").trim();
     if (!nm) { $("nameWarn").textContent = "Please type your name to begin."; $("studentName").focus(); return; }
     state.student = nm;
-    startQuiz(patternsFor(state.lastSettings.level), state.lastSettings.count);
+    startQuiz(patternsFor(state.lastSettings.level), state.lastSettings.count, state.lastSettings.mode);
   }
 
   function beginSettings(st) {
     state.lastSettings = st;
     if (st.count) { askName(); return; }
     state.student = null;
-    startQuiz(patternsFor(st.level), st.count);
+    startQuiz(patternsFor(st.level), st.count, st.mode);
   }
 
-  function startQuiz(pool, count) {
+  function startQuiz(pool, count, mode) {
     state.pool = pool;
+    state.mode = mode;
     state.total = count;
     state.index = 0;
     state.asked = 0; state.allRight = 0; state.boxes = 0; state.boxesRight = 0; state.byType = {};
@@ -300,8 +312,9 @@
     stopPlayback();
     state.current = nextPattern();
     state.answered = false;
-    state.answers = state.current.syms.map(function () { return ""; });
+    state.answers = state.current.syms.map(function () { return { paren: false, body: "" }; });
     state.sel = 0;
+    setHear(state.mode !== "test");
     $("staff").innerHTML = staffSVG(state.current);
     $("qLabel").textContent = "Question " + (state.index + 1);
     $("feedback").className = "hidden";
@@ -335,29 +348,43 @@
     });
   }
 
+  function shown(a) { return a.paren ? "(" + a.body + ")" : a.body; }
+  // What gets graded: a dash left hanging at the end is ignored
+  function given(a) { var b = a.body.replace(/-+$/, ""); return a.paren ? "(" + b + ")" : b; }
+
   function refresh() {
     var slots = $("slots").children;
     state.answers.forEach(function (a, i) {
-      var b = slots[i];
-      b.textContent = a;
-      b.classList.toggle("empty", !a);
-      b.classList.toggle("filled", !!a);
+      var b = slots[i], txt = shown(a);
+      b.textContent = txt;
+      b.classList.toggle("empty", !txt);
+      b.classList.toggle("filled", !!txt);
       b.classList.toggle("sel", !state.answered && i === state.sel);
     });
     if (state.answered) return;
-    var ready = state.answers.every(function (a) { return a.replace(/-+$/, "") !== ""; });
+    var ready = state.answers.every(function (a) { return a.body.replace(/-+$/, "") !== ""; });
     $("checkBtn").disabled = !ready;
     $("checkHint").textContent = ready ? "Press Enter or click Check." : "Click a box, then use the buttons to fill it in.";
   }
 
   function press(key) {
     if (state.answered) return;
-    var a = state.answers[state.sel];
-    if (key === "back") a = a.slice(0, -1);
-    else if (key === "-") { if (a && a.slice(-1) !== "-" && a.length < 7) a += "-"; }
-    else if (/^[1-4]$/.test(key) && a.length < 7) a += key;
-    state.answers[state.sel] = a;
+    var a = state.answers[state.sel], body = a.body;
+    if (key === "paren") a.paren = !a.paren;
+    else if (key === "parenOn") a.paren = true;
+    else if (key === "back") { if (body) body = body.slice(0, -1); else a.paren = false; }
+    else if (key === "-") { if (body && body.slice(-1) !== "-" && body.length < 7) body += "-"; }
+    else if (/^[1-4]$/.test(key) && body.length < 7) body += key;
+    a.body = body;
     refresh();
+  }
+
+  // Test mode: "Hear it" stays locked until the answer is checked
+  function setHear(on) {
+    var b = $("hearBtn");
+    b.disabled = !on;
+    b.textContent = on ? "🔊 Hear it" : "🔒 Hear it after you answer";
+    b.title = on ? "Hear this rhythm" : "Test mode: you can hear the rhythm after you check your answer";
   }
 
   function moveSel(d) {
@@ -377,7 +404,7 @@
     s.answered = true;
     var wrong = [];
     p.syms.forEach(function (sym, i) {
-      var given = s.answers[i].replace(/-+$/, ""), want = countsFor(sym), ok = given === want, k = typeKey(sym);
+      var ok = given(s.answers[i]) === answerFor(sym), k = typeKey(sym);
       s.boxes++; if (ok) s.boxesRight++;
       s.byType[k] = s.byType[k] || { right: 0, total: 0 };
       s.byType[k].total++; if (ok) s.byType[k].right++;
@@ -400,24 +427,26 @@
       var g = slotGeom(p.syms[i]), f = document.createElement("div");
       f.className = "fix";
       f.style.left = g.left + "%"; f.style.width = g.width + "%";
-      f.textContent = "✓ " + countsFor(p.syms[i]);
+      f.textContent = "✓ " + answerFor(p.syms[i]);
       box.appendChild(f);
     });
     setKeypad(false);
+    setHear(true);
 
     var praise = ["Excellent!", "Nice counting!", "You got it!", "Perfect!", "Bravo!", "Right on the beat!"];
     var html = "<div class='big'>" + (allOk ? praise[Math.floor(Math.random() * praise.length)] : "Not quite — here's how to count it:") + "</div>";
     if (!allOk) {
       html += "<ul>" + wrong.map(function (i) {
-        var sym = p.syms[i], c = countsFor(sym);
+        var sym = p.syms[i], c = answerFor(sym);
         var how = sym.dur === 1
           ? "is on beat <b>" + (sym.start + 1) + "</b>, so it's counted <b>" + c + "</b>."
           : "starts on beat <b>" + (sym.start + 1) + "</b> and lasts <b>" + sym.dur + " beats</b>, so it's counted <b>" + c + "</b>.";
         return "<li>The " + symName(sym) + " " + how + "</li>";
       }).join("") + "</ul>";
-      if (wrong.some(function (i) { return p.syms[i].rest; })) html += '<p class="hint" style="margin:8px 0 0">Remember: rests get counted too!</p>';
+      if (wrong.some(function (i) { return p.syms[i].rest; })) html += '<p class="hint" style="margin:8px 0 0">Remember: rests get counted too, and their counts go in parentheses — use the <b>( )</b> button.</p>';
+      if (wrong.some(function (i) { return !p.syms[i].rest && state.answers[i].paren; })) html += '<p class="hint" style="margin:4px 0 0">Only rests use parentheses. Notes don\'t.</p>';
     } else {
-      html += "<div>Counting: <b>" + p.syms.map(countsFor).join("&nbsp;&nbsp; ") + "</b></div>";
+      html += "<div>Counting: <b>" + p.syms.map(answerFor).join("&nbsp;&nbsp; ") + "</b></div>";
     }
     var fb = $("feedback");
     fb.className = "feedback " + (allOk ? "ok" : "no");
@@ -452,7 +481,7 @@
     stopPlayback();
     if (!n) { show("setup"); return; }
     $("resPct").textContent = pct(s.allRight, n) + "%";
-    $("resLine").innerHTML = "You counted <b>" + s.allRight + "</b> of <b>" + n + "</b> rhythms all the way right. " +
+    $("resLine").innerHTML = MODES[s.mode].name + ": you counted <b>" + s.allRight + "</b> of <b>" + n + "</b> rhythms all the way right. " +
       "Counting boxes right: <b>" + s.boxesRight + "</b> of <b>" + s.boxes + "</b>. Best streak: <b>" + s.best + "</b>.";
     $("resBars").innerHTML = typeRows().map(function (r) {
       return '<div class="bar"><span>' + r.name + '</span><div class="track"><div class="fill" style="width:' + r.pct + '%"></div></div><span class="num">' + r.right + "/" + r.total + " · " + r.pct + '%</span></div>';
@@ -518,7 +547,8 @@
     function font(size, weight) { g.font = (weight || 400) + " " + size + "px " + FONT; }
 
     var rows = typeRows();
-    var BARS_Y = 650;
+    var SY = 30;           // shift for the 4th settings row
+    var BARS_Y = 650 + SY;
     var MISSED_Y = BARS_Y + rows.length * 36 + 60;
     var picW = (W2 - 2 * P - 16) / 2, picH = picW * 200 / 640;
     var picRows = imgs ? Math.ceil(Math.min(missed.length, MAX_PICS) / 2) : 0;
@@ -549,24 +579,24 @@
 
     label("Settings", 276);
     var st = s.lastSettings;
-    [["Level", st.level.settingsText], ["Questions", String(st.count)], ["Sound after answer", $("soundOn").checked ? "On" : "Off"]]
+    [["Level", st.level.settingsText], ["Mode", MODES[s.mode].report], ["Questions", String(st.count)], ["Sound after answer", $("soundOn").checked ? "On" : "Off"]]
       .forEach(function (r, i) {
         var y = 312 + i * 31;
         g.fillStyle = "#5d6475"; font(18, 600); g.fillText(r[0], P, y);
         g.fillStyle = "#1f2430"; font(18, 400); g.fillText(r[1], P + 200, y);
       });
-    divider(410);
+    divider(410 + SY);
 
-    label("Score", 446);
-    g.fillStyle = "#7a3b1d"; font(72, 800); g.fillText(pct(s.allRight, n) + "%", P, 526);
+    label("Score", 446 + SY);
+    g.fillStyle = "#7a3b1d"; font(72, 800); g.fillText(pct(s.allRight, n) + "%", P, 526 + SY);
     var tx = P + 230;
     g.fillStyle = "#1f2430"; font(20, 400);
-    g.fillText("Rhythms counted all the way right: " + s.allRight + " of " + n, tx, 480);
-    g.fillText("Counting boxes right: " + s.boxesRight + " of " + s.boxes + " (" + pct(s.boxesRight, s.boxes) + "%)", tx, 510);
-    g.fillText("Best streak: " + s.best, tx, 540);
+    g.fillText("Rhythms counted all the way right: " + s.allRight + " of " + n, tx, 480 + SY);
+    g.fillText("Counting boxes right: " + s.boxesRight + " of " + s.boxes + " (" + pct(s.boxesRight, s.boxes) + "%)", tx, 510 + SY);
+    g.fillText("Best streak: " + s.best, tx, 540 + SY);
     if (s.total && n < s.total) {
       g.fillStyle = "#b3261e"; font(18, 700);
-      g.fillText("Ended early: answered " + n + " of " + s.total + " questions", tx, 570);
+      g.fillText("Ended early: answered " + n + " of " + s.total + " questions", tx, 570 + SY);
     }
 
     label("Counting by note and rest", BARS_Y - 32);
@@ -658,13 +688,16 @@
     b.addEventListener("click", function () { press(b.dataset.key); });
   });
   $("checkBtn").addEventListener("click", function () { state.answered ? advance() : check(); });
-  $("hearBtn").addEventListener("click", function () { if (state.current) playRhythm(state.current); });
+  $("hearBtn").addEventListener("click", function () {
+    if (!state.current || (state.mode === "test" && !state.answered)) return;
+    playRhythm(state.current);
+  });
   $("quitBtn").addEventListener("click", function () { if (state.asked) showResults(); else show("setup"); });
   $("againBtn").addEventListener("click", function () { beginSettings(state.lastSettings); });
   $("missedBtn").addEventListener("click", function () {
     var pool = Object.keys(state.missed).map(function (k) { return state.missed[k]; });
     state.student = null; // extra practice, no report
-    startQuiz(pool, Math.max(5, pool.length * 2));
+    startQuiz(pool, Math.max(5, pool.length * 2), "practice");
   });
   $("settingsBtn").addEventListener("click", function () { show("setup"); });
   $("backBtn").addEventListener("click", function () { state.current = null; show("setup"); window.scrollTo(0, 0); });
@@ -678,6 +711,7 @@
     if (state.answered) return;
     if (/^[1-4]$/.test(e.key)) { press(e.key); e.preventDefault(); }
     else if (e.key === "-" || e.key === "Subtract") { press("-"); e.preventDefault(); }
+    else if (e.key === "(" || e.key === ")") { press("parenOn"); e.preventDefault(); } // typing ( or ) turns them on
     else if (e.key === "Backspace" || e.key === "Delete") { press("back"); e.preventDefault(); }
     else if (e.key === "ArrowRight") { moveSel(1); e.preventDefault(); }
     else if (e.key === "ArrowLeft") { moveSel(-1); e.preventDefault(); }
