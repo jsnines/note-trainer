@@ -28,53 +28,43 @@
 
   // ---------- Rhythm patterns ----------
   // A pattern is a list of symbols: { rest: bool, dur: beats, start: beat (0-based, .5 = "+") }
-  // Building blocks are note lengths in beats, plus "pair": two eighth notes beamed on one beat.
-  function unitBeats(u) { return u === "pair" ? 1 : u; }
-  function compositions(total, units) {
-    if (total === 0) return [[]];
-    var out = [];
-    units.forEach(function (u) {
-      var d = unitBeats(u);
-      if (d <= total) compositions(total - d, units).forEach(function (rest) { out.push([u].concat(rest)); });
-    });
-    return out;
+  // Measures are built left to right. At each spot, every kind of note that fits has the same
+  // chance (whole notes less, since they fill the measure), and each note may become a rest.
+  // "pair" = two eighth notes beamed on one beat.
+  var WEIGHT = { 4: 0.25, 2: 1, 1: 1, pair: 1 };
+  var REST_CHANCE = { 4: 0.15, 2: 0.25, 1: 0.25 };
+
+  function pick(options) {
+    var total = 0, r;
+    options.forEach(function (o) { total += WEIGHT[o]; });
+    r = Math.random() * total;
+    for (var i = 0; i < options.length; i++) { r -= WEIGHT[options[i]]; if (r < 0) return options[i]; }
+    return options[options.length - 1];
   }
 
-  function patternsFor(level) {
-    var units = level.durs.slice();
-    if (level.pairs) units.push("pair");
-    var list = [];
-    compositions(level.beats, units).forEach(function (seq) {
-      var combos = 1 << seq.length;
-      for (var mask = 0; mask < combos; mask++) {
-        var start = 0, syms = [], rests = 0, pairs = 0, ok = true;
-        seq.forEach(function (u, i) {
-          var rest = !!(mask & (1 << i));
-          if (u === "pair") {
-            if (rest) ok = false;                                  // eighths are always a pair of notes
-            pairs++;
-            syms.push({ rest: false, dur: 0.5, start: start, beam: true });
-            syms.push({ rest: false, dur: 0.5, start: start + 0.5 });
-            start += 1;
-            return;
-          }
-          // A half rest is only written on beat 1 or beat 3 in 4/4
-          if (rest && u === 2 && start % 2 !== 0) ok = false;
-          if (rest) rests++;
-          syms.push({ rest: rest, dur: u, start: start });
-          start += u;
-        });
-        if (!ok) continue;
-        if (level.pairs && !pairs) continue;                        // every Level 2 measure has eighth notes
-        var wholeMeasure = seq.length === 1;
-        if (!wholeMeasure && rests === seq.length) continue;       // no all-rest measures (except a whole rest)
-        if (!wholeMeasure && rests > 2) continue;                   // keep it musical: at most 2 rests
-        var p = { id: syms.map(symKey).join(" "), syms: syms };
-        list.push(p);
-        if (wholeMeasure && !syms[0].rest) list.push(p);            // whole notes a little more often
+  function randomPattern(level) {
+    for (var tries = 0; tries < 500; tries++) {
+      var start = 0, syms = [], rests = 0, units = 0;
+      while (start < level.beats) {
+        var opts = level.durs.filter(function (d) { return start + d <= level.beats && (d !== 4 || start === 0); });
+        if (level.pairs) opts.push("pair");
+        var u = pick(opts);
+        units++;
+        if (u === "pair") {
+          syms.push({ rest: false, dur: 0.5, start: start, beam: true });
+          syms.push({ rest: false, dur: 0.5, start: start + 0.5 });
+          start += 1;
+          continue;
+        }
+        var rest = Math.random() < REST_CHANCE[u];
+        if (rest && u === 2 && start % 2 !== 0) rest = false;   // half rests are only written on beat 1 or 3
+        if (rest) rests++;
+        syms.push({ rest: rest, dur: u, start: start });
+        start += u;
       }
-    });
-    return list;
+      if (units > 1 && (rests === units || rests > 2)) continue; // no all-rest measures; at most 2 rests
+      return { id: syms.map(symKey).join(" "), syms: syms };
+    }
   }
 
   function symKey(s) { return (s.rest ? "r" : "n") + s.dur + "@" + s.start; }
@@ -236,15 +226,22 @@
   }
   function pct(a, b) { return b ? Math.round(100 * a / b) : 0; }
 
+  // Normal sessions make a new random rhythm each time (state.pool is null).
+  // "Practice my missed rhythms" deals from the list of missed ones instead.
   function nextPattern() {
+    var p;
+    if (!state.pool) {
+      for (var i = 0; i < 20; i++) {
+        p = randomPattern(state.lastSettings.level);
+        if (!state.current || p.id !== state.current.id) break;   // never the same rhythm twice in a row
+      }
+      return p;
+    }
     if (!state.deck.length) {
       state.deck = shuffle(state.pool.slice());
       if (state.current && state.deck.length > 1 && state.deck[0].id === state.current.id) state.deck.push(state.deck.shift());
     }
-    var p = state.deck.shift();
-    // don't show the same rhythm twice in a row (whole notes are in the deck twice)
-    if (state.current && p.id === state.current.id && state.deck.length) { state.deck.push(p); p = state.deck.shift(); }
-    return p;
+    return state.deck.shift();
   }
 
   // ---------- Level picker ----------
@@ -303,14 +300,14 @@
     var nm = $("studentName").value.replace(/\s+/g, " ").trim();
     if (!nm) { $("nameWarn").textContent = "Please type your name to begin."; $("studentName").focus(); return; }
     state.student = nm;
-    startQuiz(patternsFor(state.lastSettings.level), state.lastSettings.count, state.lastSettings.mode);
+    startQuiz(null, state.lastSettings.count, state.lastSettings.mode);
   }
 
   function beginSettings(st) {
     state.lastSettings = st;
     if (st.count) { askName(); return; }
     state.student = null;
-    startQuiz(patternsFor(st.level), st.count, st.mode);
+    startQuiz(null, st.count, st.mode);
   }
 
   function startQuiz(pool, count, mode) {
