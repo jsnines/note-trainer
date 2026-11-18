@@ -62,6 +62,8 @@
   .opt:hover { background: #f7f5f0; }
   .opt input { width: 20px; height: 20px; margin-top: 2px; accent-color: var(--accent); flex: none; }
   .opt small { display: block; color: var(--muted); font-size: 14px; }
+  #customCount { font: inherit; width: 76px; padding: 2px 8px; margin: 0 4px; border: 2px solid var(--line); border-radius: 8px; text-align: center; }
+  #customCount:focus { outline: 3px solid var(--pick); outline-offset: 1px; border-color: var(--pick); }
   .example { display: flex; flex-wrap: wrap; gap: 6px 18px; color: var(--muted); font-size: 15px; margin-top: 4px; }
   .example b { color: var(--ink); }
 
@@ -167,6 +169,7 @@
       <span>Whole note: <b>1-2-3-4</b></span>
       <span>Quarter rest on beat 2: <b>(2)</b></span>
       <span>Half rest on beat 3: <b>(3-4)</b></span>
+      <span>Eighth notes on beat 2 (Level 2): <b>2</b> and <b>+</b></span>
     </div>
 
     <h3 style="margin-top:16px">1. Choose your level</h3>
@@ -177,6 +180,9 @@
         <h3>2. How many questions?</h3>
         <label class="opt"><input type="radio" name="count" value="10" checked><span>10 questions</span></label>
         <label class="opt"><input type="radio" name="count" value="20"><span>20 questions</span></label>
+        <label class="opt"><input type="radio" name="count" value="custom"><span>Custom
+          <input type="number" id="customCount" min="1" max="100" step="1" value="15" inputmode="numeric" aria-label="Custom number of questions"> questions
+          <small>Any number from 1 to 100</small></span></label>
         <label class="opt"><input type="radio" name="count" value="0"><span>Practice forever<small>No end — stop whenever you like</small></span></label>
       </div>
       <div>
@@ -193,6 +199,7 @@
 
     <div class="actions">
       <button class="primary" id="startBtn">Start ▶</button>
+      <span id="setupWarn" class="warn"></span>
     </div>
   </section>
 
@@ -223,6 +230,7 @@
         <button type="button" data-key="2">2</button>
         <button type="button" data-key="3">3</button>
         <button type="button" data-key="4">4</button>
+        <button type="button" data-key="+" id="plusKey" aria-label="Plus, for the and of the beat" class="hidden">+</button>
         <button type="button" data-key="-" aria-label="Dash">–</button>
         <button type="button" data-key="paren" aria-label="Parentheses for a rest" title="Parentheses for a rest">( )</button>
         <button type="button" data-key="back" class="erase">⌫ Erase</button>
@@ -288,45 +296,65 @@
       id: 1, name: "Level 1", beats: 4, time: "4/4",
       desc: "4/4 time · whole, half, and quarter notes and rests",
       settingsText: "Level 1: 4/4 time, whole, half and quarter notes and rests",
-      durs: [4, 2, 1]
+      durs: [4, 2, 1], pairs: false
+    },
+    {
+      id: 2, name: "Level 2", beats: 4, time: "4/4",
+      desc: "Level 1 plus pairs of eighth notes (1 +)",
+      settingsText: "Level 2: Level 1 plus pairs of eighth notes on the beat (1 +)",
+      durs: [4, 2, 1], pairs: true
     }
   ];
 
   var TYPE_NAMES = {
-    n4: "Whole notes", n2: "Half notes", n1: "Quarter notes",
+    n4: "Whole notes", n2: "Half notes", n1: "Quarter notes", "n0.5": "Eighth notes",
     r4: "Whole rests", r2: "Half rests", r1: "Quarter rests"
   };
-  var TYPE_ORDER = ["n4", "n2", "n1", "r4", "r2", "r1"];
-  var SINGULAR = { 4: "whole", 2: "half", 1: "quarter" };
+  var TYPE_ORDER = ["n4", "n2", "n1", "n0.5", "r4", "r2", "r1"];
+  var SINGULAR = { 4: "whole", 2: "half", 1: "quarter", 0.5: "eighth" };
 
   // ---------- Rhythm patterns ----------
-  // A pattern is a list of symbols: { rest: bool, dur: beats, start: 0-based beat }
-  function compositions(total, durs) {
+  // A pattern is a list of symbols: { rest: bool, dur: beats, start: beat (0-based, .5 = "+") }
+  // Building blocks are note lengths in beats, plus "pair": two eighth notes beamed on one beat.
+  function unitBeats(u) { return u === "pair" ? 1 : u; }
+  function compositions(total, units) {
     if (total === 0) return [[]];
     var out = [];
-    durs.forEach(function (d) {
-      if (d <= total) compositions(total - d, durs).forEach(function (rest) { out.push([d].concat(rest)); });
+    units.forEach(function (u) {
+      var d = unitBeats(u);
+      if (d <= total) compositions(total - d, units).forEach(function (rest) { out.push([u].concat(rest)); });
     });
     return out;
   }
 
   function patternsFor(level) {
+    var units = level.durs.slice();
+    if (level.pairs) units.push("pair");
     var list = [];
-    compositions(level.beats, level.durs).forEach(function (durs) {
-      var combos = 1 << durs.length;
+    compositions(level.beats, units).forEach(function (seq) {
+      var combos = 1 << seq.length;
       for (var mask = 0; mask < combos; mask++) {
-        var start = 0, syms = [], rests = 0, ok = true;
-        durs.forEach(function (d, i) {
+        var start = 0, syms = [], rests = 0, pairs = 0, ok = true;
+        seq.forEach(function (u, i) {
           var rest = !!(mask & (1 << i));
+          if (u === "pair") {
+            if (rest) ok = false;                                  // eighths are always a pair of notes
+            pairs++;
+            syms.push({ rest: false, dur: 0.5, start: start, beam: true });
+            syms.push({ rest: false, dur: 0.5, start: start + 0.5 });
+            start += 1;
+            return;
+          }
           // A half rest is only written on beat 1 or beat 3 in 4/4
-          if (rest && d === 2 && start % 2 !== 0) ok = false;
+          if (rest && u === 2 && start % 2 !== 0) ok = false;
           if (rest) rests++;
-          syms.push({ rest: rest, dur: d, start: start });
-          start += d;
+          syms.push({ rest: rest, dur: u, start: start });
+          start += u;
         });
         if (!ok) continue;
-        var wholeMeasure = durs.length === 1;
-        if (!wholeMeasure && rests === durs.length) continue;      // no all-rest measures (except a whole rest)
+        if (level.pairs && !pairs) continue;                        // every Level 2 measure has eighth notes
+        var wholeMeasure = seq.length === 1;
+        if (!wholeMeasure && rests === seq.length) continue;       // no all-rest measures (except a whole rest)
         if (!wholeMeasure && rests > 2) continue;                   // keep it musical: at most 2 rests
         var p = { id: syms.map(symKey).join(" "), syms: syms };
         list.push(p);
@@ -338,7 +366,9 @@
 
   function symKey(s) { return (s.rest ? "r" : "n") + s.dur + "@" + s.start; }
   function typeKey(s) { return (s.rest ? "r" : "n") + s.dur; }
+  function onBeat(s) { return s.start % 1 === 0; }
   function countsFor(s) {
+    if (s.dur === 0.5) return onBeat(s) ? String(s.start + 1) : "+";
     var b = [];
     for (var i = 0; i < s.dur; i++) b.push(s.start + 1 + i);
     return b.join("-");
@@ -402,6 +432,12 @@
     // time signature 4/4
     out += '<g fill="#1f2430" font-family="Georgia, \'Times New Roman\', serif" font-weight="700" font-size="40" text-anchor="middle">' +
       '<text x="56" y="' + (yOf(4) - 1) + '">4</text><text x="56" y="' + (yOf(0) - 1) + '">4</text></g>';
+    // beams join each pair of eighth notes at the top of their stems
+    pattern.syms.forEach(function (s, i) {
+      if (!s.beam) return;
+      var a = symX(s) + 7.9, b = symX(pattern.syms[i + 1]) + 7.9, top = yOf(NOTE_POS) - 50;
+      out += '<rect x="' + (a - 0.95) + '" y="' + top + '" width="' + (b - a + 1.9) + '" height="6.5" fill="#1f2430"/>';
+    });
     pattern.syms.forEach(function (s, i) {
       out += drawSym(s, i);
       if (opts.counts) {
@@ -523,12 +559,20 @@
     if (id === "setup") state.student = null;
   }
 
+  // Returns null (and shows a message) if the custom number isn't usable
   function readSettings() {
-    return {
-      level: level,
-      count: +document.querySelector('input[name="count"]:checked').value,
-      mode: document.querySelector('input[name="mode"]:checked').value
-    };
+    var pick = document.querySelector('input[name="count"]:checked').value, count;
+    if (pick === "custom") {
+      var raw = $("customCount").value.trim();
+      count = /^\d+$/.test(raw) ? +raw : NaN;
+      if (!(count >= 1 && count <= 100)) {
+        $("setupWarn").textContent = "Type a number from 1 to 100 for a custom number of questions.";
+        $("customCount").focus();
+        return null;
+      }
+    } else count = +pick;
+    $("setupWarn").textContent = "";
+    return { level: level, count: count, mode: document.querySelector('input[name="mode"]:checked').value };
   }
 
   function askName() {
@@ -594,6 +638,7 @@
     state.answers = state.current.syms.map(function () { return { paren: false, body: "" }; });
     state.sel = 0;
     setHear(state.mode !== "test");
+    $("plusKey").classList.toggle("hidden", !state.lastSettings.level.pairs);
     $("staff").innerHTML = staffSVG(state.current);
     $("qLabel").textContent = "Question " + (state.index + 1);
     $("feedback").className = "hidden";
@@ -607,7 +652,8 @@
   }
 
   function slotGeom(s) {
-    var w = Math.min(BW - 14, 118), left = symX(s) - 24;
+    var eighth = s.dur === 0.5;
+    var w = eighth ? BW / 2 - 20 : Math.min(BW - 20, 112), left = symX(s) - (eighth ? 10 : 18);
     if (left + w > W - 30) left = W - 30 - w;
     return { left: 100 * left / W, width: 100 * w / W, center: 100 * (left + w / 2) / W };
   }
@@ -653,7 +699,7 @@
     else if (key === "parenOn") a.paren = true;
     else if (key === "back") { if (body) body = body.slice(0, -1); else a.paren = false; }
     else if (key === "-") { if (body && body.slice(-1) !== "-" && body.length < 7) body += "-"; }
-    else if (/^[1-4]$/.test(key) && body.length < 7) body += key;
+    else if ((/^[1-4]$/.test(key) || key === "+") && body.length < 7) body += key;
     a.body = body;
     refresh();
   }
@@ -717,7 +763,11 @@
     if (!allOk) {
       html += "<ul>" + wrong.map(function (i) {
         var sym = p.syms[i], c = answerFor(sym);
-        var how = sym.dur === 1
+        var how = sym.dur === 0.5
+          ? (onBeat(sym)
+            ? "is on beat <b>" + (sym.start + 1) + "</b>, so it's counted <b>" + c + "</b>."
+            : "is on the \"and\" of beat <b>" + Math.floor(sym.start + 1) + "</b>, so it's counted <b>+</b>.")
+          : sym.dur === 1
           ? "is on beat <b>" + (sym.start + 1) + "</b>, so it's counted <b>" + c + "</b>."
           : "starts on beat <b>" + (sym.start + 1) + "</b> and lasts <b>" + sym.dur + " beats</b>, so it's counted <b>" + c + "</b>.";
         return "<li>The " + symName(sym) + " " + how + "</li>";
@@ -957,7 +1007,17 @@
   }
 
   // ---------- Events ----------
-  $("startBtn").addEventListener("click", function () { beginSettings(readSettings()); });
+  $("startBtn").addEventListener("click", function () {
+    var st = readSettings();
+    if (st) beginSettings(st);
+  });
+  // typing in the custom box picks "Custom"
+  function pickCustom() { document.querySelector('input[name="count"][value="custom"]').checked = true; }
+  $("customCount").addEventListener("focus", pickCustom);
+  $("customCount").addEventListener("input", function () { pickCustom(); $("setupWarn").textContent = ""; });
+  $("customCount").addEventListener("keydown", function (e) {
+    if (e.key === "Enter") { e.preventDefault(); $("startBtn").click(); }
+  });
   $("nameGoBtn").addEventListener("click", beginNamed);
   $("nameBackBtn").addEventListener("click", function () { show("setup"); });
   $("studentName").addEventListener("keydown", function (e) {
@@ -991,6 +1051,7 @@
     if (/^[1-4]$/.test(e.key)) { press(e.key); e.preventDefault(); }
     else if (e.key === "-" || e.key === "Subtract") { press("-"); e.preventDefault(); }
     else if (e.key === "(" || e.key === ")") { press("parenOn"); e.preventDefault(); } // typing ( or ) turns them on
+    else if ((e.key === "+" || e.key === "&") && state.lastSettings.level.pairs) { press("+"); e.preventDefault(); }
     else if (e.key === "Backspace" || e.key === "Delete") { press("back"); e.preventDefault(); }
     else if (e.key === "ArrowRight") { moveSel(1); e.preventDefault(); }
     else if (e.key === "ArrowLeft") { moveSel(-1); e.preventDefault(); }
