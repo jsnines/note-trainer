@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rhythm Counting Trainer</title>
+<style>
+  :root {
+    --bg: #f3f1ec;
+    --card: #ffffff;
+    --ink: #1f2430;
+    --muted: #5d6475;
+    --line: #d9d5cc;
+    --accent: #7a3b1d;
+    --accent-soft: #f5e6dc;
+    --good: #1e7a3c;
+    --good-soft: #dff3e5;
+    --bad: #b3261e;
+    --bad-soft: #fbe3e1;
+    --pick: #2f5bb7;
+    --pick-soft: #e3ebfb;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Segoe UI", Roboto, "Noto Sans", Arial, sans-serif;
+    font-size: 17px;
+    line-height: 1.4;
+    min-height: 100vh;
+  }
+  header {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 10px 20px; background: var(--accent); color: #fff;
+  }
+  header h1 { font-size: 20px; margin: 0; font-weight: 700; letter-spacing: .2px; }
+  header .stats { display: flex; gap: 18px; font-size: 15px; flex-wrap: wrap; }
+  header .stats b { font-size: 17px; }
+  main { max-width: 980px; margin: 0 auto; padding: 16px; }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+    padding: 18px 20px; box-shadow: 0 1px 3px rgba(0,0,0,.05);
+  }
+  .card + .card { margin-top: 14px; }
+  .hidden { display: none !important; }
+  h2 { margin: 0 0 10px; font-size: 22px; }
+  h3 { margin: 0 0 8px; font-size: 16px; color: var(--muted); text-transform: uppercase; letter-spacing: .6px; }
+  p { margin: 0 0 10px; }
+
+  /* Setup */
+  .levels { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; margin: 8px 0 6px; }
+  .level {
+    display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left;
+    padding: 12px 14px; border: 2px solid var(--line); border-radius: 12px; background: #fff;
+    font-size: 19px; font-weight: 700;
+  }
+  .level small { font-size: 14px; font-weight: 500; color: var(--muted); }
+  .level.on { border-color: var(--accent); background: var(--accent-soft); color: #4a220f; box-shadow: 0 0 0 2px var(--accent) inset; }
+  .setup-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 14px; }
+  .opt { display: flex; align-items: flex-start; gap: 10px; padding: 9px 10px; border-radius: 10px; cursor: pointer; }
+  .opt:hover { background: #f7f5f0; }
+  .opt input { width: 20px; height: 20px; margin-top: 2px; accent-color: var(--accent); flex: none; }
+  .opt small { display: block; color: var(--muted); font-size: 14px; }
+  .example { display: flex; flex-wrap: wrap; gap: 6px 18px; color: var(--muted); font-size: 15px; margin-top: 4px; }
+  .example b { color: var(--ink); }
+
+  button {
+    font: inherit; cursor: pointer; border-radius: 10px; border: 2px solid var(--line);
+    background: #fff; color: var(--ink); padding: 10px 16px; font-weight: 600;
+    transition: background .12s, border-color .12s, transform .05s;
+  }
+  button:hover:not(:disabled) { border-color: #b9b3a6; }
+  button:active:not(:disabled) { transform: translateY(1px); }
+  button:disabled { cursor: default; }
+  button:focus-visible { outline: 3px solid var(--pick); outline-offset: 2px; }
+  .primary { background: var(--accent); border-color: var(--accent); color: #fff; font-size: 18px; padding: 12px 26px; }
+  .primary:hover:not(:disabled) { background: #5f2c14; border-color: #5f2c14; }
+  .primary:disabled { opacity: .45; }
+  .ghost { background: transparent; }
+  .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; align-items: center; }
+  .warn { color: var(--bad); font-weight: 600; }
+  .hint { color: var(--muted); font-size: 14px; }
+
+  /* Name screen */
+  .name-box { max-width: 520px; margin: 0 auto; text-align: center; }
+  .name-box input {
+    font: inherit; font-size: 22px; padding: 12px 14px; width: 100%;
+    border: 2px solid var(--line); border-radius: 10px; margin: 10px 0 4px; text-align: center;
+  }
+  .name-box input:focus { outline: 3px solid var(--pick); outline-offset: 1px; border-color: var(--pick); }
+  .name-box .actions { justify-content: center; }
+
+  /* Rhythm + answer boxes */
+  .rhythm { position: relative; max-width: 860px; margin: 0 auto; }
+  .rhythm svg { width: 100%; height: auto; display: block; }
+  .sym { color: var(--ink); transition: color .08s; }
+  .sym.playing { color: #d0601c; }
+  .slots { position: relative; height: 58px; }
+  .slots.answered { height: 84px; }
+  .slot {
+    position: absolute; top: 0; height: 52px; padding: 0 2px;
+    display: flex; align-items: center; justify-content: center;
+    border: 2px dashed #b9b3a6; border-radius: 10px; background: #fff;
+    font-size: clamp(14px, 2.6vw, 22px); font-weight: 700; letter-spacing: .5px; white-space: nowrap;
+  }
+  .slot.empty::after { content: "?"; color: #c4bdb0; font-weight: 600; }
+  .slot.filled { border-style: solid; }
+  .slot.sel { border: 3px solid var(--pick); background: var(--pick-soft); color: #17327a; }
+  .slot.right { border: 2px solid var(--good); background: var(--good-soft); color: #0f4a23; }
+  .slot.wrong { border: 2px solid var(--bad); background: var(--bad-soft); color: #7a1610; }
+  .fix {
+    position: absolute; top: 56px; text-align: center; color: var(--good);
+    font-size: clamp(13px, 2.3vw, 18px); font-weight: 700; white-space: nowrap;
+  }
+  .keypad { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 10px; }
+  .keypad button { min-width: 62px; font-size: 24px; padding: 8px 12px; }
+  .keypad button.erase { font-size: 18px; }
+  .tools { display: flex; justify-content: center; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
+  .check-row { display: flex; justify-content: center; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 14px; }
+
+  .feedback { margin-top: 14px; border-radius: 12px; padding: 14px 16px; }
+  .feedback.ok { background: var(--good-soft); border: 2px solid var(--good); }
+  .feedback.no { background: var(--bad-soft); border: 2px solid var(--bad); }
+  .feedback .big { font-size: 22px; font-weight: 700; margin-bottom: 4px; }
+  .feedback ul { margin: 6px 0 0; padding-left: 20px; }
+
+  /* Results */
+  .score-big { font-size: 56px; font-weight: 800; color: var(--accent); line-height: 1; }
+  .bars { display: grid; gap: 8px; margin: 14px 0; max-width: 560px; }
+  .bar { display: grid; grid-template-columns: 130px 1fr 92px; gap: 10px; align-items: center; font-weight: 600; }
+  .bar .track { height: 14px; background: #ece8df; border-radius: 99px; overflow: hidden; }
+  .bar .fill { height: 100%; background: var(--accent); border-radius: 99px; }
+  .bar .num { text-align: right; }
+  .missed { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; margin-top: 8px; }
+  .missed svg { width: 100%; height: auto; border: 1px solid #e9b4ae; border-radius: 10px; background: #fff; }
+  .report-wrap { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
+  .report-wrap img { width: 100%; max-width: 720px; height: auto; display: block; border: 1px solid var(--line); border-radius: 10px; }
+  .save-help { margin-top: 12px; padding: 12px 14px; border-radius: 10px; background: var(--pick-soft); border: 1px solid #b9cbef; max-width: 720px; }
+  .save-help ol { margin: 6px 0 0; padding-left: 22px; }
+  .save-help code { font-size: 16px; font-weight: 700; background: #fff; padding: 1px 6px; border-radius: 6px; user-select: all; }
+
+  @media (max-width: 720px) {
+    .setup-grid { grid-template-columns: 1fr; }
+    header { flex-direction: column; align-items: flex-start; }
+    .bar { grid-template-columns: 110px 1fr 80px; }
+  }
+</style>
+</head>
+<body>
+<div id="jsCheck" style="background:#fbe3e1;border:2px solid #b3261e;color:#7a1610;padding:10px 16px;font-weight:600">⚠ The app's code (rhythm.js) did not load, so the buttons won't work. Please tell your teacher.</div>
+
+<header>
+  <h1>🎵 Rhythm Counting Trainer</h1>
+  <div class="stats" id="stats"></div>
+</header>
+
+<main>
+  <!-- SETUP SCREEN -->
+  <section id="setup" class="card">
+    <h2>Count that rhythm!</h2>
+    <p>You'll see one measure of music. Under each note and rest, fill in its counts with the number buttons.
+      Use a dash <b>( – )</b> to connect the beats of a longer note or rest.</p>
+    <div class="example">
+      <span>Quarter note on beat 3: <b>3</b></span>
+      <span>Half note on beat 1: <b>1-2</b></span>
+      <span>Whole note: <b>1-2-3-4</b></span>
+    </div>
+
+    <h3 style="margin-top:16px">1. Choose your level</h3>
+    <div class="levels" id="levelPicks"></div>
+
+    <div class="setup-grid">
+      <div>
+        <h3>2. How many questions?</h3>
+        <label class="opt"><input type="radio" name="count" value="10" checked><span>10 questions</span></label>
+        <label class="opt"><input type="radio" name="count" value="20"><span>20 questions</span></label>
+        <label class="opt"><input type="radio" name="count" value="0"><span>Practice forever<small>No end — stop whenever you like</small></span></label>
+      </div>
+      <div>
+        <h3>3. Sound</h3>
+        <label class="opt"><input type="checkbox" id="soundOn" checked>
+          <span>Play the rhythm after I answer<small>With a 4-beat count-in and a click on every beat</small></span></label>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button class="primary" id="startBtn">Start ▶</button>
+    </div>
+  </section>
+
+  <!-- NAME SCREEN (10- and 20-question sessions) -->
+  <section id="nameScreen" class="card hidden">
+    <div class="name-box">
+      <h2>What's your name?</h2>
+      <p class="hint" id="nameSummary"></p>
+      <input id="studentName" type="text" maxlength="40" autocomplete="off" spellcheck="false" placeholder="Type your name" aria-label="Your name">
+      <p class="warn" id="nameWarn"></p>
+      <div class="actions">
+        <button type="button" id="nameBackBtn">← Back</button>
+        <button type="button" class="primary" id="nameGoBtn">Begin ▶</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- QUIZ SCREEN -->
+  <section id="quiz" class="hidden">
+    <div class="card">
+      <h3 id="qLabel">Question 1</h3>
+      <div class="rhythm">
+        <div id="staff"></div>
+        <div class="slots" id="slots"></div>
+      </div>
+      <div class="keypad" id="keypad">
+        <button type="button" data-key="1">1</button>
+        <button type="button" data-key="2">2</button>
+        <button type="button" data-key="3">3</button>
+        <button type="button" data-key="4">4</button>
+        <button type="button" data-key="-" aria-label="Dash">–</button>
+        <button type="button" data-key="back" class="erase">⌫ Erase</button>
+      </div>
+      <div class="check-row">
+        <button class="primary" id="checkBtn" disabled>Check answer</button>
+        <span class="hint" id="checkHint">Click a box, then use the buttons to fill it in.</span>
+      </div>
+      <div id="feedback" class="hidden"></div>
+      <div class="tools">
+        <button class="ghost" id="backBtn" title="Go back to the start page">← Start page</button>
+        <button class="ghost" id="hearBtn" title="Hear this rhythm">🔊 Hear it</button>
+        <button class="ghost" id="quitBtn">End &amp; see results</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- RESULTS SCREEN -->
+  <section id="results" class="card hidden">
+    <h2>Great work! 🎉</h2>
+    <div class="score-big" id="resPct"></div>
+    <p id="resLine" style="margin-top:6px"></p>
+    <div class="bars" id="resBars"></div>
+    <div id="resMissedWrap">
+      <h3>Rhythms to practice</h3>
+      <div class="missed" id="resMissed"></div>
+    </div>
+    <div id="reportWrap" class="report-wrap hidden">
+      <h3>Report for your teacher</h3>
+      <canvas id="reportCanvas" class="hidden"></canvas>
+      <div class="actions" style="margin-top:4px">
+        <button type="button" class="primary" id="saveImgBtn">📷 Save results as a picture</button>
+        <button type="button" id="openImgBtn">Open picture in a new tab</button>
+      </div>
+      <p class="hint" id="saveHint" style="margin-top:8px"></p>
+      <div class="save-help hidden" id="saveHelp">
+        <b>Picture didn't download?</b> Save it this way instead:
+        <ol>
+          <li>Right-click the report picture below. (On a Chromebook, tap the touchpad with two fingers. On an iPad, press and hold.)</li>
+          <li>Choose <b>Save image as…</b> (or <b>Save to Photos</b>).</li>
+          <li>Name it <code id="saveName"></code></li>
+        </ol>
+      </div>
+      <img id="reportImg" alt="Results report picture" style="margin-top:14px">
+    </div>
+    <div class="actions">
+      <button class="primary" id="missedBtn">Practice my missed rhythms</button>
+      <button id="againBtn">Play again</button>
+      <button id="settingsBtn">Change settings</button>
+    </div>
+  </section>
+</main>
+
+<script src="scorm.js"></script>
+<script src="rhythm.js"></script>
+</body>
+</html>
